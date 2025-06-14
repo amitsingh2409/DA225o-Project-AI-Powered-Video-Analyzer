@@ -18,7 +18,7 @@ DB_PATH = str(STORAGE_DIR / "video_data.db")
 WHISPER_MODEL = "base"  # Options: tiny, base, small, medium, large
 
 # vLLM configuration
-VLLM_MODEL = "Qwen/Qwen3-8B"  # Choose your preferred model
+VLLM_MODEL = "Qwen/Qwen3-30B-A3B"  # Choose your preferred model
 VLLM_PORT = 3000
 VLLM_HOST = "0.0.0.0"
 VLLM_MAX_MODEL_LEN = 4096

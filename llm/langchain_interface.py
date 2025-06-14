@@ -1,45 +1,34 @@
-import logging
-from typing import Dict, List, Optional
 import json
-from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
-from langchain.llms.base import LLM
-
+import logging
+from typing import Dict, List
 from .vllm_setup import VLLMServer
 
 logger = logging.getLogger(__name__)
 
 
 class LangchainInterface:
-    """Interface to LangChain for LLM interactions."""
+    """Interface for using LLM capabilities via vLLM server."""
 
-    def __init__(self, vllm_server: VLLMServer):
-        self.vllm_server = vllm_server
-        self.llm = self._setup_llm()
+    def __init__(self, llm_server: VLLMServer):
+        """
+        Initialize the LangchainInterface.
 
-    def _setup_llm(self) -> LLM:
-        """Setup LLM using vLLM."""
-
-        # Define a custom LLM that uses the vLLM server
-        class VLLMWrapper(LLM):
-            vllm_instance: VLLMServer
-
-            def __init__(self, vllm_instance):
-                super().__init__()
-                self.vllm_instance = vllm_instance
-
-            @property
-            def _llm_type(self) -> str:
-                return "custom_vllm"
-
-            def _call(self, prompt: str, stop: Optional[List[str]] = None, **kwargs) -> str:
-                # Call vLLM and return the generated text
-                return self.vllm_instance.generate(prompt, stop=stop)
-
-        return VLLMWrapper(self.vllm_server)
+        Args:
+            llm_server: An initialized and started VLLMServer instance
+        """
+        self.llm = llm_server
 
     def answer_question(self, query: str, context: str) -> str:
-        """Answer a question based on provided context."""
+        """
+        Answer a question based on provided context.
+
+        Args:
+            query: User's question about the video
+            context: Video transcript or other contextual information
+
+        Returns:
+            A string containing the answer to the question
+        """
         prompt_template = """
         You are a helpful AI assistant who provides information about videos.
         
@@ -52,19 +41,25 @@ class LangchainInterface:
         Answer:
         """
 
-        prompt = PromptTemplate(template=prompt_template, input_variables=["context", "query"])
-
-        chain = LLMChain(llm=self.llm, prompt=prompt)
+        prompt = prompt_template.format(context=context, query=query)
 
         try:
-            result = chain.run(context=context, query=query)
-            return result.strip()
+            return self.llm.generate(prompt, max_tokens=512, temperature=0.7)
         except Exception as e:
             logger.error(f"Error generating answer: {str(e)}")
-            return "I'm sorry, I encountered an error while processing your question."
+            return "Sorry, I couldn't process your question due to a system error."
 
     def get_navigation_point(self, query: str, context: str) -> Dict:
-        """Get navigation point based on query."""
+        """
+        Get navigation point based on query.
+
+        Args:
+            query: User's navigation query
+            context: Video transcript with timestamps
+
+        Returns:
+            Dict containing timestamp and reason
+        """
         prompt_template = """
         {context}
         
@@ -74,38 +69,45 @@ class LangchainInterface:
         Respond with only a JSON object containing: timestamp (string) and reason (string).
         """
 
-        prompt = PromptTemplate(template=prompt_template, input_variables=["context", "query"])
-
-        chain = LLMChain(llm=self.llm, prompt=prompt)
+        prompt = prompt_template.format(context=context, query=query)
 
         try:
-            result = chain.run(context=context, query=query)
+            response = self.llm.generate(prompt, max_tokens=256, temperature=0.3)
 
-            # Try to extract JSON from the result
-            result = result.strip()
-            # Find JSON-like content between { and }
-            start_idx = result.find("{")
-            end_idx = result.rfind("}")
-            if start_idx >= 0 and end_idx > start_idx:
-                json_str = result[start_idx : end_idx + 1]
-                navigation_data = json.loads(json_str)
-                return {
-                    "timestamp": navigation_data.get("timestamp", "0:00"),
-                    "reason": navigation_data.get("reason", "No specific reason provided"),
-                }
-            else:
-                # Fallback if JSON extraction fails
-                logger.warning(f"Failed to extract JSON from LLM response: {result}")
-                return {
-                    "timestamp": "0:00",
-                    "reason": "Could not determine a specific position in the video.",
-                }
+            # Extract JSON from the response
+            try:
+                # Find JSON-like content in the response
+                response = response.strip()
+                if response.startswith("```json"):
+                    response = response.split("```json")[1].split("```")[0].strip()
+                elif response.startswith("```"):
+                    response = response.split("```")[1].split("```")[0].strip()
+
+                result = json.loads(response)
+                if "timestamp" not in result or "reason" not in result:
+                    logger.warning(f"Incomplete navigation response: {result}")
+                    return {
+                        "timestamp": "00:00:00",
+                        "reason": "Could not determine appropriate timestamp",
+                    }
+                return result
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse navigation JSON: {str(e)} - Raw: {response}")
+                return {"timestamp": "00:00:00", "reason": "Could not parse timestamp information"}
         except Exception as e:
             logger.error(f"Error generating navigation point: {str(e)}")
-            return {"timestamp": "0:00", "reason": "Error processing your navigation request."}
+            return {"timestamp": "00:00:00", "reason": "Error processing navigation request"}
 
     def generate_summary(self, context: str) -> str:
-        """Generate a summary of a video."""
+        """
+        Generate a summary of a video.
+
+        Args:
+            context: Video transcript or other content to summarize
+
+        Returns:
+            A concise summary of the video
+        """
         prompt_template = """
         {context}
         
@@ -115,46 +117,67 @@ class LangchainInterface:
         Summary:
         """
 
-        prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
-
-        chain = LLMChain(llm=self.llm, prompt=prompt)
+        prompt = prompt_template.format(context=context)
 
         try:
-            result = chain.run(context=context)
-            return result.strip()
+            return self.llm.generate(prompt, max_tokens=300, temperature=0.5)
         except Exception as e:
             logger.error(f"Error generating summary: {str(e)}")
-            return "Summary generation failed due to an error."
+            return "Unable to generate summary due to a system error."
 
     def generate_quiz(self, context: str) -> List[Dict]:
-        """Generate a quiz based on video content."""
+        """
+        Generate a quiz based on video content.
+
+        Args:
+            context: Video transcript or content
+
+        Returns:
+            List of quiz questions with answers
+        """
         prompt_template = """
         {context}
+        
+        Based on the video content, generate 3 multiple-choice quiz questions that test understanding of the key concepts.
+        
+        For each question:
+        1. Provide the question text
+        2. Provide 4 possible answers (A, B, C, D)
+        3. Indicate the correct answer
+        
+        Return your response as a JSON array where each item has the format:
+        {{"question": "Question text", "options": ["Option A", "Option B", "Option C", "Option D"], "correct": "A"}}
         """
 
-        prompt = PromptTemplate(template=prompt_template, input_variables=["context"])
-
-        chain = LLMChain(llm=self.llm, prompt=prompt)
+        prompt = prompt_template.format(context=context)
 
         try:
-            result = chain.run(context=context)
+            response = self.llm.generate(prompt, max_tokens=800, temperature=0.7)
 
-            # Try to extract JSON from the result
-            result = result.strip()
+            # Extract JSON from the response
+            try:
+                # Find JSON-like content in the response
+                response = response.strip()
+                if response.startswith("```json"):
+                    response = response.split("```json")[1].split("```")[0].strip()
+                elif response.startswith("```"):
+                    response = response.split("```")[1].split("```")[0].strip()
 
-            # Find JSON-like content between [ and ]
-            start_idx = result.find("[")
-            end_idx = result.rfind("]")
+                result = json.loads(response)
+                # Validate the structure
+                if not isinstance(result, list):
+                    logger.warning("Quiz response is not a list")
+                    result = []
 
-            if start_idx >= 0 and end_idx > start_idx:
-                json_str = result[start_idx : end_idx + 1]
-                quiz_data = json.loads(json_str)
-                return quiz_data
-            else:
-                logger.warning(f"Failed to extract JSON quiz data: {result}")
-                # Return empty quiz if JSON extraction fails
+                # Validate each question
+                for item in result:
+                    if not all(key in item for key in ["question", "options", "correct"]):
+                        logger.warning(f"Invalid quiz question format: {item}")
+
+                return result
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse quiz JSON: {str(e)} - Raw: {response}")
                 return []
-
         except Exception as e:
             logger.error(f"Error generating quiz: {str(e)}")
             return []
