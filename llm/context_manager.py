@@ -14,18 +14,15 @@ class ContextManager:
     def prepare_context(self, query: str, video_id: str, context_size: int = 5) -> str:
         """Prepare context for a query about a specific video."""
         try:
-            # Get relevant segments from vector store
             relevant_segments = self.vector_store.search(
                 query=query, video_id=video_id, k=context_size
             )
 
             if not relevant_segments:
-                # Fallback: get transcript from database
                 full_transcript, segments = self.db.get_transcript(video_id)
                 if not segments:
                     return "No transcript available for this video."
 
-                # Just use first few segments if vector search failed
                 relevant_segments = [
                     {
                         "text": segment["text"],
@@ -35,12 +32,21 @@ class ContextManager:
                     for segment in segments[:context_size]
                 ]
 
-            # Format context
-            context_parts = ["Here are relevant parts of the video transcript:"]
+            context_parts = [
+                "Here are relevant parts of the video transcript that address the user's question:",
+                f"User question: \"{query}\"\n",
+            ]
 
             for i, segment in enumerate(relevant_segments):
                 timestamp = self._format_timestamp(segment["start_time"])
                 context_parts.append(f"[{timestamp}] {segment['text']}")
+
+            context_parts.append(
+                "\nBased on these transcript segments, please provide a clear, concise answer to the user's question. "
+                "Reference specific timestamps when appropriate using the [MM:SS] format. "
+                "If the provided segments don't contain enough information to answer the question fully, "
+                "acknowledge this limitation in your response."
+            )
 
             return "\n\n".join(context_parts)
 
@@ -50,57 +56,68 @@ class ContextManager:
 
     def prepare_navigation_context(self, query: str, video_id: str) -> str:
         """Prepare context specifically for navigation queries."""
-        # Get transcript
         full_transcript, segments = self.db.get_transcript(video_id)
         if not segments:
             return "No transcript available for this video."
 
-        # Get relevant segments
         relevant_segments = self.vector_store.search(query=query, video_id=video_id, k=3)
 
         context_parts = [
-            "The user wants to navigate to a specific part of the video.",
-            "Your task is to identify the most relevant timestamp based on their query.",
+            "The user wants to navigate to a specific part of the video with this request:",
+            f"\"{query}\"",
+            "\nYour task is to identify the most relevant timestamp based on their request.",
             "Here are some relevant parts of the transcript:",
         ]
 
-        # Add relevant segments to context
         for segment in relevant_segments:
             timestamp = self._format_timestamp(segment["start_time"])
             context_parts.append(f"[{timestamp}] {segment['text']}")
 
-        # Add instructions
         context_parts.append(
-            "\nRespond with a timestamp (in the format MM:SS or HH:MM:SS) "
-            + "and a brief explanation of why this is the right part of the video."
+            "\nRespond with the following format:"
+            "\n1. The exact timestamp (in the format MM:SS or HH:MM:SS) that best matches the user's request"
+            "\n2. A brief explanation (1-2 sentences) of why this is the right part of the video"
+            "\n3. If you're uncertain about the exact timestamp, state your confidence level and suggest an alternative approach"
         )
 
         return "\n\n".join(context_parts)
 
     def prepare_summary_context(self, video_id: str) -> str:
         """Prepare context for generating a video summary."""
-        # Get transcript
         full_transcript, segments = self.db.get_transcript(video_id)
         if not full_transcript:
             return "No transcript available for this video."
 
         return (
-            f"Here is the transcript of a video that needs to be summarized:\n\n{full_transcript}"
+            "Your task is to create a comprehensive summary of the following video transcript:\n\n"
+            f"{full_transcript}\n\n"
+            "Please structure your summary as follows:\n"
+            "1. A brief overview (2-3 sentences) describing the main topic\n"
+            "2. 3-5 key points or main ideas covered in the video\n"
+            "3. A concise conclusion\n\n"
+            "Keep the entire summary under 250 words while capturing the essential content and flow of the video."
         )
 
     def prepare_quiz_context(self, video_id: str) -> str:
         """Prepare context for generating a quiz."""
-        # Get transcript
         full_transcript, segments = self.db.get_transcript(video_id)
         if not full_transcript:
             return "No transcript available for this video."
 
         context = [
-            "Here is the transcript of a video that you need to create a quiz for:",
+            "Create a quiz based on the following video transcript:",
             full_transcript,
-            "\nCreate a quiz with 5 questions based on the video content.",
-            "For each question, provide 4 possible answers with one correct answer.",
-            "Format the output as a JSON array of objects with these fields: question, options (array), correctAnswerIndex",
+            "\nGenerate a balanced quiz with these specifications:",
+            "- 5 questions of mixed difficulty (2 easy, 2 medium, 1 challenging)",
+            "- Questions should cover different parts of the video, not just the beginning",
+            "- Include a mix of factual recall and conceptual understanding questions",
+            "- For each question, provide 4 plausible answer options with exactly one correct answer",
+            "- Make incorrect options realistic and plausible to test true understanding",
+            "\nFormat the output as a JSON array of objects with these fields:",
+            "- question: The quiz question text",
+            "- options: Array of 4 possible answers",
+            "- correctAnswerIndex: Index (0-3) of the correct answer",
+            "- difficulty: String indicating difficulty level ('easy', 'medium', or 'challenging')",
         ]
 
         return "\n\n".join(context)
