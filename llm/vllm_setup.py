@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 import logging
 import threading
@@ -67,7 +66,7 @@ class VLLMServer:
             "--load-format",
             "safetensors",
             "--tensor-parallel-size",
-            "2"
+            "2",
         ]
 
         logger.info(f"Starting vLLM server with command: {' '.join(command)}")

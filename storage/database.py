@@ -1,8 +1,8 @@
-import sqlite3
 import json
 import logging
-from typing import Dict, List, Optional, Tuple
+import sqlite3
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 
 from ..config import DB_PATH
 

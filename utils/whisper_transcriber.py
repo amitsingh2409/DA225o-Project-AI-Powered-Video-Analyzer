@@ -1,10 +1,10 @@
 import os
-import whisper
 import torch
+import whisper
 import ffmpeg
+import logging
 from pathlib import Path
 from typing import Dict, List, Tuple
-import logging
 
 from ..config import WHISPER_MODEL, TEMP_DIR
 
@@ -18,7 +18,7 @@ class WhisperTranscriber:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"Loading Whisper model '{model_name}' on {self.device}")
         self.model = whisper.load_model(model_name, device=self.device)
-        logger.info(f"Whisper model loaded successfully")
+        logger.info("Whisper model loaded successfully")
 
     def extract_audio(self, video_path: str) -> str:
         """Extract audio from video file."""

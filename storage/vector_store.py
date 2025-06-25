@@ -1,8 +1,8 @@
 import os
 import logging
 from typing import Dict, List, Optional
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from ..config import VECTOR_DB_PATH
