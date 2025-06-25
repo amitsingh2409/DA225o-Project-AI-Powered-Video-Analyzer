@@ -72,13 +72,11 @@ from llm.context_manager import ContextManager
 context_manager = ContextManager(db)
 qa_engine = QAEngine(db, context_manager, langchain_interface)
 
-# Ask a question about a specific video
 response = qa_engine.answer_question(
     video_id="unique_id_123",
     query="What is the main topic discussed in the video?"
 )
 
-# Access the answer
 if response["success"]:
     print(response["answer"])
 else:
@@ -92,13 +90,10 @@ from modules.summarization import SummarizationEngine
 
 summarizer = SummarizationEngine(db, context_manager, langchain_interface)
 
-# Get or generate a summary
 summary_result = summarizer.get_summary(video_id="unique_id_123")
 
-# Force regeneration of a summary
 new_summary = summarizer.get_summary(video_id="unique_id_123", regenerate=True)
 
-# Access the summary
 if summary_result["success"]:
     print(summary_result["summary"])
 ```
@@ -110,13 +105,10 @@ from modules.quiz_generator import QuizGenerator
 
 quiz_generator = QuizGenerator(db, context_manager, langchain_interface)
 
-# Get or generate a quiz for a video
 quiz_result = quiz_generator.get_quiz(video_id="unique_id_123")
 
-# Force generation of a new quiz
 new_quiz = quiz_generator.get_quiz(video_id="unique_id_123", regenerate=True)
 
-# Access the quiz questions
 if quiz_result["success"]:
     for i, question in enumerate(quiz_result["questions"]):
         print(f"Q{i+1}: {question['question']}")
