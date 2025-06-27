@@ -66,7 +66,7 @@ class VLLMServer:
             "--load-format",
             "safetensors",
             "--tensor-parallel-size",
-            "2",
+            "1",
         ]
 
         logger.info(f"Starting vLLM server with command: {' '.join(command)}")
